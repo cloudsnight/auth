@@ -3,6 +3,7 @@ const express = require("express");
 const ejs = require("ejs");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
+const encrypt = require("mongoose-encryption");
 
 // mengaktifkan aplikasi express()
 const app = express();
@@ -24,6 +25,9 @@ const userSchema = new mongoose.Schema({
   username: String,
   password: String
 });
+// mongoose encryption plugin
+const secret = "Thisisourlittlesecret";
+userSchema.plugin(encrypt, {secret: secret, encryptedFields: ["password"]});
 // membuat model dengan kompilasi dari schema user
 const User = mongoose.model('User', userSchema);
 
