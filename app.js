@@ -5,7 +5,8 @@ const express = require("express");
 const ejs = require("ejs");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+// const encrypt = require("mongoose-encryption");
+const md5 = require("md5");
 
 // mengaktifkan aplikasi express()
 const app = express();
@@ -28,7 +29,7 @@ const userSchema = new mongoose.Schema({
   password: String
 });
 // mongoose encryption plugin
-userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields: ["password"]});
+// userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields: ["password"]});
 // membuat model dengan kompilasi dari schema user
 const User = mongoose.model('User', userSchema);
 
@@ -53,7 +54,7 @@ app.get("/logout", (req,res)=>{
 // POST
 app.post("/register", (req,res)=>{
   const userName = req.body.username;
-  const password = req.body.password;
+  const password = md5(req.body.password);
 
     const newUser = new User({
       username: userName,
@@ -73,7 +74,7 @@ app.post("/register", (req,res)=>{
 
 app.post("/login", (req,res)=>{
   const userName = req.body.username;
-  const password = req.body.password;
+  const password = md5(req.body.password);
 
   User.findOne({username: userName}).then(
     resolve=> {
