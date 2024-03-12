@@ -6,7 +6,9 @@ const ejs = require("ejs");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 // const encrypt = require("mongoose-encryption");
-const md5 = require("md5");
+// const md5 = require("md5");
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
 
 // mengaktifkan aplikasi express()
 const app = express();
@@ -54,11 +56,12 @@ app.get("/logout", (req,res)=>{
 // POST
 app.post("/register", (req,res)=>{
   const userName = req.body.username;
-  const password = md5(req.body.password);
+  const password = req.body.password;
 
+  bcrypt.hash(password, saltRounds).then((hash)=> {
     const newUser = new User({
       username: userName,
-      password: password
+      password: hash
     });
 
     newUser.save().then(
@@ -70,18 +73,28 @@ app.post("/register", (req,res)=>{
         console.log(reject);
       }
     )
+  });
 });
 
 app.post("/login", (req,res)=>{
   const userName = req.body.username;
-  const password = md5(req.body.password);
+  const password = req.body.password;
 
   User.findOne({username: userName}).then(
     resolve=> {
-      if(resolve.password === password){
-        res.render("secrets");
-      }else{
+      if(!resolve){
         res.redirect("/login");
+        console.log("there is no document");
+      }else{
+        bcrypt.compare(password, resolve.password).then(result => {
+          if(result == true){
+            res.render("secrets");
+            console.log(result);
+          }else{
+            res.redirect("/login");
+            console.log(result);
+          }
+        });
       }
     }
   )
