@@ -7,8 +7,11 @@ const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 // const encrypt = require("mongoose-encryption");
 // const md5 = require("md5");
-const bcrypt = require("bcrypt");
-const saltRounds = 10;
+// const bcrypt = require("bcrypt");
+// const saltRounds = 10;
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
 
 // mengaktifkan aplikasi express()
 const app = express();
@@ -21,6 +24,16 @@ app.set("view engine", "ejs");
 app.use(express.static("public"));
 // mempermudah pengolahan data dari request form html
 app.use(bodyParser.urlencoded({extended: true}));
+// mempersiapkan express session. Melakukakn inisialisasi session.
+app.set('trust proxy', 1);
+app.use(session({
+  secret: "Our little secret.",
+  resave: false,
+  saveUninitialized: false
+}));
+// menggunakan passport middleware
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Disini tempat mongoose
 // menghubungkan mongoDB dengan mongoose
@@ -32,8 +45,15 @@ const userSchema = new mongoose.Schema({
 });
 // mongoose encryption plugin
 // userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields: ["password"]});
+// memasang plugin passport-local mongoose kedalam userSchema
+userSchema.plugin(passportLocalMongoose);
 // membuat model dengan kompilasi dari schema user
 const User = mongoose.model('User', userSchema);
+// menggunakan metode autentikasi statis model di-LocalStrategy
+passport.use(User.createStrategy());
+// menggunakan serialisasi statis dan de-serialisasi model untuk dukungan passport-session
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 // Disini tempat HTTP Request
 // GET
@@ -49,55 +69,52 @@ app.get("/login", (req,res)=>{
   res.render("login");
 });
 
-app.get("/logout", (req,res)=>{
-  res.redirect("/");
-});
-
-// POST
-app.post("/register", (req,res)=>{
-  const userName = req.body.username;
-  const password = req.body.password;
-
-  bcrypt.hash(password, saltRounds).then((hash)=> {
-    const newUser = new User({
-      username: userName,
-      password: hash
-    });
-
-    newUser.save().then(
-      resolve=> {
-        console.log("resolved");
-        res.render("secrets");
-      }, reject=> {
-        res.send("Somethings error !");
-        console.log(reject);
-      }
-    )
+app.get("/logout", (req,res, next)=>{
+  req.logout(function(err) {
+    if (err) { return next(err); }
+    res.redirect('/');
   });
 });
 
-app.post("/login", (req,res)=>{
-  const userName = req.body.username;
-  const password = req.body.password;
+app.get("/secrets", (req,res)=>{
+  console.log(req.isAuthenticated());
+  if(req.isAuthenticated()){
+    res.render("secrets");
+  }else{
+    res.redirect("/login");
+  }
+});
 
-  User.findOne({username: userName}).then(
-    resolve=> {
-      if(!resolve){
-        res.redirect("/login");
-        console.log("there is no document");
-      }else{
-        bcrypt.compare(password, resolve.password).then(result => {
-          if(result == true){
-            res.render("secrets");
-            console.log(result);
-          }else{
-            res.redirect("/login");
-            console.log(result);
-          }
-        });
-      }
+// POST
+app.post("/register", (req,res, next)=>{
+  User.register({username: req.body.username}, req.body.password, (err, user)=>{
+    if(err){
+      console.log(err);
+      return next(res.redirect("/register"));
+    }else{
+      req.login(user, (err)=> {
+        if (err) { 
+          return next(err); 
+        }
+        return res.redirect("/secrets");
+      });
     }
-  )
+  });
+});
+
+app.post("/login", (req, res, next)=>{
+  const user = new User({
+    username: req.body.username,
+    password: req.body.password
+  });
+
+  req.login(user, (err)=> {
+    if (err) { 
+      return next(err); 
+    }
+    return res.redirect("/secrets");
+  });
+ 
 });
 
 // menghubungkan port
