@@ -44,7 +44,9 @@ mongoose.connect("mongodb://127.0.0.1:27017/userDB");
 const userSchema = new mongoose.Schema({
   username: String,
   password: String,
-  googleId: String
+  googleId: String,
+  localId: String,
+  secret: String
 });
 
 // Mongoose plugin disini
@@ -62,24 +64,16 @@ const User = mongoose.model('User', userSchema);
 passport.use(User.createStrategy());
 
 // Disini tempat serialisasi
-// menggunakan serialisasi statis dan de-serialisasi model untuk dukungan passport-session
+// menggunakan serialize dari mongoose
 // passport.serializeUser(User.serializeUser());
 // passport.deserializeUser(User.deserializeUser());
 // serialisasi dan de-serialisasi dari passport-google-oauth20
-passport.serializeUser(function(user, cb) {
-  process.nextTick(function() {
-    return cb(null, {
-      id: user.id,
-      username: user.username,
-      picture: user.picture
-    });
-  });
+passport.serializeUser(function(user, done) {
+  done(null, user.id);
 });
 
-passport.deserializeUser(function(user, cb) {
-  process.nextTick(function() {
-    return cb(null, user);
-  });
+passport.deserializeUser(function(id, done) {
+  User.findById(id).then(user=>{done(null, user)});
 });
 
 // setup google strategy
@@ -89,7 +83,7 @@ passport.use(new GoogleStrategy({
   callbackURL: "http://localhost:3000/auth/google/secrets"
 },
 function(accessToken, refreshToken, profile, cb) {
-  console.log(profile);
+  // console.log(profile);
   User.findOrCreate({ googleId: profile.id }, function (err, user) {
     return cb(err, user);
   });
@@ -108,6 +102,7 @@ app.get('/auth/google/secrets',
   });
 
 app.get("/", (req,res)=>{
+  console.log(req.user);
   res.render("home");
 });
 
@@ -129,15 +124,34 @@ app.get("/logout", (req,res, next)=>{
 app.get("/secrets", (req,res)=>{
   console.log(req.isAuthenticated());
   if(req.isAuthenticated()){
-    res.render("secrets");
+    User.find({secret: {$ne: null}}).then(
+      fulfill=> {
+        // console.log(fulfill);
+        if(fulfill){
+          res.render("secrets", {userData: fulfill});
+        }else{
+          res.render("secrets", {userData: [{secret: "no secret"}]});
+        }
+        
+      }
+    )
   }else{
     res.redirect("/login");
+  }
+});
+
+app.get("/submit", (req, res)=> {
+  if(req.isAuthenticated()){
+    res.render("submit");
+  }else{
+    return res.redirect("/login");
   }
 });
 
 // POST
 app.post("/register", (req,res, next)=>{
   User.register({username: req.body.username}, req.body.password, (err, user)=>{
+    console.log("Register post : " + user);
     if(err){
       console.log(err);
       return next(res.redirect("/register"));
@@ -158,13 +172,30 @@ app.post("/login", (req, res, next)=>{
     password: req.body.password
   });
 
-  req.login(user, (err)=> {
-    if (err) { 
-      return next(err); 
-    }
-    return res.redirect("/secrets");
+  passport.authenticate("local")(req, res, ()=>{
+    res.redirect("/secrets");
   });
- 
+});
+
+app.post("/submit", (req, res)=>{
+  const inputSecret = req.body.secret;
+  console.log(req.session);
+  console.log(req.user);
+
+  User.findById(req.user._id).then(
+    user=> {
+      if(user){
+        user.secret = inputSecret;
+        user.save().then(resolve=> {
+          res.redirect("/secrets");
+        }, 
+        reject=> {console.log(reject)});
+      }
+    },
+    err=> {
+      console.log(err);
+    }
+  )
 });
 
 // menghubungkan port
